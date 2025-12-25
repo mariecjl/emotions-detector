@@ -5,29 +5,24 @@ import torch
 from collections import deque
 from mlp_model import EmotionNet
 
-# -------------------------------
-# Config
-# -------------------------------
+#config
 EMOTION_LABELS = [
     "angry", "disgust", "fear",
     "happy", "sad", "surprise", "neutral"
 ]
 
+#cuda/cpu allocation
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 HISTORY = 7
 CONF_THRESH = 0.45
 TEMPERATURE = 2.5
 
-# -------------------------------
-# Load trained model
-# -------------------------------
+#loading the trained model (see emotion_model.py)
 model = EmotionNet(num_classes=7).to(DEVICE)
 model.load_state_dict(torch.load("emotion_model.pt", map_location=DEVICE))
 model.eval()
 
-# -------------------------------
-# MediaPipe FaceMesh
-# -------------------------------
+#mediapipe facemesh & detection thresholds
 mp_face_mesh = mp.solutions.face_mesh
 face_mesh = mp_face_mesh.FaceMesh(
     static_image_mode=False,
@@ -37,9 +32,7 @@ face_mesh = mp_face_mesh.FaceMesh(
     min_tracking_confidence=0.5
 )
 
-# -------------------------------
-# Helper: draw probability bars
-# -------------------------------
+#helper function to draw probability bars
 def draw_prob_bars(frame, labels, probs,
                    x=20, y=90,
                    bar_width=200,
@@ -48,7 +41,7 @@ def draw_prob_bars(frame, labels, probs,
     for i, (label, prob) in enumerate(zip(labels, probs)):
         y_i = y + i * (bar_height + spacing)
 
-        # Background bar
+        #background bar
         cv2.rectangle(
             frame,
             (x, y_i),
@@ -56,8 +49,7 @@ def draw_prob_bars(frame, labels, probs,
             (60, 60, 60),
             -1
         )
-
-        # Filled bar
+        # filled
         fill_w = int(bar_width * prob)
         cv2.rectangle(
             frame,
@@ -66,8 +58,7 @@ def draw_prob_bars(frame, labels, probs,
             (180, 180, 180),
             -1
         )
-
-        # Label + value
+        #labelling and value
         cv2.putText(
             frame,
             f"{label}: {prob:.2f}",
@@ -78,9 +69,7 @@ def draw_prob_bars(frame, labels, probs,
             1
         )
 
-# -------------------------------
-# Webcam
-# -------------------------------
+#webcam and image capture
 cap = cv2.VideoCapture(0)
 history = deque(maxlen=HISTORY)
 
@@ -98,34 +87,31 @@ while cap.isOpened():
     if results.multi_face_landmarks:
         face_landmarks = results.multi_face_landmarks[0]
 
-        # -------------------------------
-        # Extract (x, y, z) landmarks
-        # -------------------------------
+        #extract (x, y, z) landmarks and coords
         coords = np.array(
             [[lm.x, lm.y, lm.z] for lm in face_landmarks.landmark],
             dtype=np.float32
         )
 
-        # -------------------------------
-        # Normalize EXACTLY like training
-        # -------------------------------
-        coords -= coords[1]  # nose tip
+        #normalization (similar to training images)
+        #normalizing according to nosetip
+        coords -= coords[1]  
+        #scaling facial width and features
         scale = np.linalg.norm(coords[33] - coords[263])
         coords /= (scale + 1e-6)
 
         x_tensor = torch.tensor(coords.flatten(), dtype=torch.float32)\
                         .unsqueeze(0).to(DEVICE)
 
-        # Sanity check (remove later if you want)
+        #for debugging 
         assert x_tensor.shape[1] == 1434, x_tensor.shape
 
-        # -------------------------------
-        # Emotion prediction
-        # -------------------------------
+        #prediction
         with torch.no_grad():
             logits = model(x_tensor)
             probs = torch.softmax(logits / TEMPERATURE, dim=1)[0]
 
+        #calculating predictions and averages
         history.append(probs.cpu().numpy())
         avg_probs = np.mean(history, axis=0)
 
@@ -137,9 +123,7 @@ while cap.isOpened():
         else:
             emotion_text = EMOTION_LABELS[pred_idx]
 
-        # -------------------------------
-        # Draw FaceMesh (clean gray)
-        # -------------------------------
+        #drawing facemesh for visualization purposes :)
         for a, b in mp_face_mesh.FACEMESH_TESSELATION:
             p1 = face_landmarks.landmark[a]
             p2 = face_landmarks.landmark[b]
@@ -155,9 +139,7 @@ while cap.isOpened():
                 1
             )
 
-        # -------------------------------
-        # Draw emotion text
-        # -------------------------------
+        #placing emotion text on frame
         cv2.putText(
             frame,
             f"{emotion_text} ({confidence:.2f})",
@@ -168,14 +150,12 @@ while cap.isOpened():
             2
         )
 
-        # -------------------------------
-        # Draw probability bars
-        # -------------------------------
+        #probability bar display
         draw_prob_bars(frame, EMOTION_LABELS, avg_probs)
 
     cv2.imshow("Emotion Recognition", frame)
 
-    if cv2.waitKey(1) & 0xFF == 27:  # ESC
+    if cv2.waitKey(1) & 0xFF == 27: 
         break
 
 cap.release()
