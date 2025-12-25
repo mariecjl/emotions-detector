@@ -7,21 +7,16 @@ import os
 from data_load import train_loader, test_loader, class_labels
 from model import ArchitectureCNN
 
-# -------------------
-# Config
-# -------------------
+#config and tunable variables
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 EPOCHS = 25
 LR = 1e-3
 CHECKPOINT_DIR = "checkpoints"
 CHECKPOINT_PATH = os.path.join(CHECKPOINT_DIR, "architecture_cnn_latest.pth")
 SAVE_EVERY = 5  # epochs
-
 os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 
-# -------------------
-# Model / Optim / Loss
-# -------------------
+# model, optimizer and loss criterion
 model = ArchitectureCNN(num_classes=len(class_labels)).to(DEVICE)
 optimizer = optim.Adam(model.parameters(), lr=LR)
 criterion = nn.CrossEntropyLoss()
